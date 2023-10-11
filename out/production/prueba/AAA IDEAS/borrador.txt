@@ -1,0 +1,138 @@
+agregarButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                try {
+                    String nombreCliente = TFCLIENTE.getText();
+                    String nombreVendedor = TFEMPLEADO.getText();
+                    String nombreProducto = TFPRODUCTO.getText();
+
+                    if (nombreCliente.isEmpty()) {
+                        nombreCliente = obtenerValorAnonimo("cliente");
+                        if (nombreCliente == null) {
+                            return;
+                        }
+                    }
+                    if (nombreVendedor.isEmpty()) {
+                        nombreVendedor = obtenerValorAnonimo("vendedor");
+                        if (nombreVendedor == null) {
+                            return;
+                        }
+                    }
+                    int idCliente = Connect.getIDCliente(nombreCliente);
+                    int idEmpleado = Connect.getIDEmpleado(nombreVendedor);
+                    int idProducto = Connect.getIDProducto(nombreProducto);
+
+                    int cantidad = Integer.parseInt(TFCANTIDAD.getText());
+                    double precioProducto = Connect.getPrecioProductoPorId(idProducto, idProveedor);
+
+                    if (precioProducto == 0.0) {
+                        int respuesta = JOptionPane.showConfirmDialog(
+                                null,
+                                "El producto no se encuentra en la base de datos. ¿Desea cargarlo de todos modos?",
+                                "Producto no encontrado",
+                                JOptionPane.YES_NO_OPTION
+                        );
+
+                        if (respuesta == JOptionPane.YES_OPTION) {
+                            String precioStr = JOptionPane.showInputDialog("Ingrese el precio del producto:");
+                            try {
+                                precioProducto = Double.parseDouble(precioStr);
+                            } catch (NumberFormatException ex) {
+                                JOptionPane.showMessageDialog(null, "Ingrese un precio válido.", "Error", JOptionPane.ERROR_MESSAGE);
+                                return;
+                            }
+                        } else {
+                            return;
+                        }
+                    }
+
+                    double subtotal = precioProducto * cantidad;
+                    subtotalTotal += subtotal;
+
+                    TFSUBTOTAL.setText(String.valueOf(subtotalTotal));
+
+                    Object[] fila = new Object[8];
+                    fila[0] = nombreCliente;
+                    fila[1] = nombreVendedor;
+                    fila[2] = nombreProducto;
+                    fila[3] = precioProducto;
+                    fila[4] = cantidad;
+                    fila[5] = subtotal;
+                    fila[6] = descuento;
+                    fila[7] = total;
+
+                    detalleTableModel.addRow(fila);
+                    TFacturacionDetalle.setModel(detalleTableModel);
+
+
+                    ------------------------
+
+
+                    boolean exitoInsercion = Connect.insertarDetalleFactura(idFacturaGenerado, idProducto, cantidad, precioProducto, subtotal);
+                                        if (exitoInsercion) {
+                                            Object[] fila = new Object[8];
+                                            fila[0] = nombreCliente;
+                                            fila[1] = nombreVendedor;
+                                            fila[2] = !codigoProducto.isEmpty() ? nombreProducto : productoBuscado; // Mostrar el nombre en lugar del código si se buscó por código.
+                                            fila[3] = precioProducto;
+                                            fila[4] = cantidad;
+                                            fila[5] = subtotal;
+                                            fila[6] = descuento;
+                                            fila[7] = total;
+
+                                            detalleTableModel.addRow(fila);
+                                            TFacturacionDetalle.setModel(detalleTableModel);
+                                        } else {
+                                            JOptionPane.showMessageDialog(null, "Error al insertar el detalle de la factura en la base de datos.", "Error", JOptionPane.ERROR_MESSAGE);
+                                        }
+
+                } catch (NumberFormatException ex) {
+                    JOptionPane.showMessageDialog(null, "Ingrese valores numéricos válidos en los campos.", "Error", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        });
+
+        ---------------------------------------------------------
+
+            public int insertarFacturaEncabezado(int idCliente, int idEmpleado, double subtotalTotal, int descuento, double total) throws SQLException {
+                int idFactura = 0;
+                String sql = "INSERT INTO factura_encabezado (id_cliente, id_empleado, fecha_registro, subtotal, descuento, total) VALUES (?, ?, ?, ?, ?, ?)";
+                try (Connection conn = FF.getConnection();
+                     PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+                    ps.setInt(1, idCliente);
+                    ps.setInt(2, idEmpleado);
+                    ps.setDate(3, new Date(System.currentTimeMillis()));
+                    ps.setDouble(4, subtotalTotal);
+                    ps.setInt(5, descuento);
+                    ps.setDouble(6, total);
+                    ps.executeUpdate();
+
+                    int filasInsertadas = ps.executeUpdate();
+                    if (filasInsertadas > 0) {
+                        ResultSet generatedKeys = ps.getGeneratedKeys();
+                        if (generatedKeys.next()) {
+                            return generatedKeys.getInt(1);
+                        }
+                    }
+                } catch (SQLException ex) {
+                    ex.printStackTrace();
+                }
+                return -1;
+            }
+            public void insertarDetalleFactura(int idFacturaGenerado, List<DetalleFactura> detallesFactura) {
+                String sql = "INSERT INTO factura_detalle (id_factura, id_producto, cantidad, precio_unitario, subtotal) VALUES (?, ?, ?, ?, ?)";
+                try (Connection conn = FF.getConnection();
+                     PreparedStatement ps = conn.prepareStatement(sql)) {
+                    for (DetalleFactura detalle : detallesFactura) {
+                        ps.setInt(1, idFacturaGenerado);
+                        ps.setInt(2, detalle.getIdProducto());
+                        ps.setInt(3, detalle.getCantidad());
+                        ps.setDouble(4, detalle.getPrecioProducto());
+                        ps.setDouble(5, detalle.getSubtotal());
+                        ps.executeUpdate();
+                    }
+                } catch (SQLException ex) {
+                    System.err.println("Error al insertar detalle de factura: " + ex.getMessage());
+                    ex.printStackTrace();
+                }
+            }
